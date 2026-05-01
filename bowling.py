@@ -1,23 +1,50 @@
+# Return the number of pins knocked down by the roll at rolls[idx].
+def pin_value(rolls: list, idx: int) -> int:
+    roll = rolls[idx]
+    if roll == 'X':
+        return 10
+    if roll == '/':
+        prev = rolls[idx - 1]
+        return 10 - (10 if prev == 'X' else int(prev))
+    return int(roll)
+
+# Score a single regular frame (frames 1–9), returning (score, rolls_consumed)
+def score_regular_frame(rolls: list, roll_idx: int) -> tuple[int | None, int | None]:
+    first = rolls[roll_idx]
+
+    if first == 'X':
+        if roll_idx + 2 >= len(rolls):
+            return None, 1
+        score = 10 + pin_value(rolls, roll_idx + 1) + pin_value(rolls, roll_idx + 2)
+        return score, 1
+
+    if roll_idx + 1 >= len(rolls):
+        return None, None  # second ball not thrown yet, caller should stop
+
+    if rolls[roll_idx + 1] == '/':
+        if roll_idx + 2 >= len(rolls):
+            return None, 2
+        return 10 + pin_value(rolls, roll_idx + 2), 2
+
+    return pin_value(rolls, roll_idx) + pin_value(rolls, roll_idx + 1), 2
+
+# Score the 10th frame, which awards a bonus roll after a strike or spare.
+def score_tenth_frame(rolls: list, roll_idx: int) -> int | None:
+    if roll_idx + 1 >= len(rolls):
+        return None
+
+    first, second = rolls[roll_idx], rolls[roll_idx + 1]
+    earns_bonus = first == 'X' or second == '/'
+
+    if earns_bonus:
+        if roll_idx + 2 >= len(rolls):
+            return None
+        return pin_value(rolls, roll_idx) + pin_value(rolls, roll_idx + 1) + pin_value(rolls, roll_idx + 2)
+
+    return pin_value(rolls, roll_idx) + pin_value(rolls, roll_idx + 1)
+
+# rolls: Roll values as int (0-9), 'X' (strike), or '/' (spare).
 def calculate_frame_scores(rolls: list) -> list[int | None]:
-    """
-    Calculate per-frame bowling scores for a game in progress.
-
-    Args:
-        rolls: Roll values as int (0-9), 'X' (strike), or '/' (spare).
-
-    Returns:
-        Per-frame scores (int) or None for frames whose score can't be determined yet.
-    """
-
-    def pin_value(idx: int) -> int:
-        roll = rolls[idx]
-        if roll == 'X':
-            return 10
-        if roll == '/':
-            prev = rolls[idx - 1]
-            return 10 - (10 if prev == 'X' else int(prev))
-        return int(roll)
-
     results = []
     roll_idx = 0
 
@@ -26,48 +53,13 @@ def calculate_frame_scores(rolls: list) -> list[int | None]:
             break
 
         if frame < 9:
-            first = rolls[roll_idx]
-
-            if first == 'X':  # Strike: consumes 1 roll, needs 2 lookahead
-                score = (
-                    None if roll_idx + 2 >= len(rolls)
-                    else 10 + pin_value(roll_idx + 1) + pin_value(roll_idx + 2)
-                )
-                results.append(score)
-                roll_idx += 1
-
-            elif roll_idx + 1 >= len(rolls):  # Only one roll so far in frame
-                results.append(None)
+            score, rolls_consumed = score_regular_frame(rolls, roll_idx)
+            results.append(score)
+            if rolls_consumed is None:  # frame is mid-roll, no further frames to score
                 break
-
-            elif rolls[roll_idx + 1] == '/':  # Spare: needs 1 lookahead
-                score = (
-                    None if roll_idx + 2 >= len(rolls)
-                    else 10 + pin_value(roll_idx + 2)
-                )
-                results.append(score)
-                roll_idx += 2
-
-            else:  # Open frame
-                results.append(pin_value(roll_idx) + pin_value(roll_idx + 1))
-                roll_idx += 2
-
-        else:  # 10th frame: strike or spare earns a bonus roll
-            if roll_idx + 1 >= len(rolls):
-                results.append(None)
-                break
-
-            first, second = rolls[roll_idx], rolls[roll_idx + 1]
-            needs_bonus = first == 'X' or second == '/'
-
-            if needs_bonus and roll_idx + 2 >= len(rolls):
-                results.append(None)
-            elif needs_bonus:
-                results.append(
-                    pin_value(roll_idx) + pin_value(roll_idx + 1) + pin_value(roll_idx + 2)
-                )
-            else:
-                results.append(pin_value(roll_idx) + pin_value(roll_idx + 1))
+            roll_idx += rolls_consumed
+        else:
+            results.append(score_tenth_frame(rolls, roll_idx))
 
     return results
 
@@ -117,5 +109,5 @@ if __name__ == "__main__":
     # --- 10th frame: open (no bonus roll) ---
     assert calculate_frame_scores(base + [3, 5])          == [9]*9 + [8],    "10th open frame"
     assert calculate_frame_scores(base + [3])             == [9]*9 + [None], "10th frame, only one roll"
-
+    
     print("All tests passed.")
