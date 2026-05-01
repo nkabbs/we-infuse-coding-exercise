@@ -31,26 +31,38 @@ def score_regular_frame(rolls: list, roll_idx: int) -> tuple[int | None, int | N
         raise ValueError("Frame total exceeds 10 pins")
     return pin_value(rolls, roll_idx) + pin_value(rolls, roll_idx + 1), 2
 
-# Score the 10th frame, which awards a bonus roll after a strike or spare
-def score_tenth_frame(rolls: list, roll_idx: int) -> int | None:
-    first = rolls[roll_idx]
-    
-    if first == '/':
-        raise ValueError("Spare cannot open the 10th frame")
-    
-    if roll_idx + 1 >= len(rolls):
-        return None
-
-    second = rolls[roll_idx + 1]
-
+# Validate the first two balls of the 10th frame; returns True if a bonus ball is earned.
+def is_bonus_for_tenth_frame(first, second) -> bool:
     if first != 'X' and second == 'X':
         raise ValueError("Strike in second roll must follow a strike in the 10th frame")
     if first == 'X' and second == '/':
         raise ValueError("Spare notation invalid when pins were reset by a first-ball strike")
     if first != 'X' and second != '/' and int(first) + int(second) > 10:
         raise ValueError("Open frame total exceeds available pins")
+    return first == 'X' or second == '/'
 
-    earns_bonus = (first == 'X' or second == '/')
+# Validate the bonus ball of the 10th frame given the second ball and rack context.
+def validate_tenth_frame_bonus(second, third, shared_rack):
+    if third == '/' and not shared_rack:
+        raise ValueError("Spare requires pins remaining from the same rack")
+    if third == 'X' and shared_rack:
+        raise ValueError("Cannot strike with a partially depleted rack")
+    if shared_rack and third != '/' and int(second) + int(third) > 10:
+        raise ValueError("Third ball total exceeds 10 pins")
+
+# Score the 10th frame, which awards a bonus roll after a strike or spare
+def score_tenth_frame(rolls: list, roll_idx: int) -> int | None:
+    first = rolls[roll_idx]
+
+    if first == '/':
+        raise ValueError("Spare cannot open the 10th frame")
+
+    if roll_idx + 1 >= len(rolls):
+        return None
+
+    second = rolls[roll_idx + 1]
+    earns_bonus = is_bonus_for_tenth_frame(first, second)
+
     if not earns_bonus:
         if roll_idx + 2 < len(rolls):
             raise ValueError("Extra rolls after a complete 10th frame with no bonus")
@@ -61,12 +73,8 @@ def score_tenth_frame(rolls: list, roll_idx: int) -> int | None:
 
     third = rolls[roll_idx + 2]
     shared_rack = (first == 'X' and second not in ('X', '/'))
-    if third == '/' and not shared_rack:
-        raise ValueError("Spare requires pins remaining from the same rack")
-    if third == 'X' and shared_rack:
-        raise ValueError("Cannot strike with a partially depleted rack")
-    if shared_rack and third != '/' and int(second) + int(third) > 10:
-        raise ValueError("Third ball total exceeds 10 pins")
+    validate_tenth_frame_bonus(second, third, shared_rack)
+
     if roll_idx + 3 < len(rolls):
         raise ValueError("More than 3 rolls after a complete 10th frame with bonus")
 
