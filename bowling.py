@@ -11,40 +11,79 @@ def pin_value(rolls: list, idx: int) -> int:
 # Score a single regular frame (frames 1–9), returning (score, rolls_consumed)
 def score_regular_frame(rolls: list, roll_idx: int) -> tuple[int | None, int | None]:
     first = rolls[roll_idx]
-
+    if first == '/':
+        raise ValueError("Spare cannot open a frame")
     if first == 'X':
         if roll_idx + 2 >= len(rolls):
             return None, 1
         score = 10 + pin_value(rolls, roll_idx + 1) + pin_value(rolls, roll_idx + 2)
         return score, 1
-
     if roll_idx + 1 >= len(rolls):
         return None, None  # second ball not thrown yet, caller should stop
-
-    if rolls[roll_idx + 1] == '/':
+    second = rolls[roll_idx + 1]
+    if second == 'X':
+        raise ValueError("Strike cannot be the second ball of a frame")
+    if second == '/':
         if roll_idx + 2 >= len(rolls):
             return None, 2
         return 10 + pin_value(rolls, roll_idx + 2), 2
-
+    if int(first) + int(second) > 10:
+        raise ValueError("Frame total exceeds 10 pins")
     return pin_value(rolls, roll_idx) + pin_value(rolls, roll_idx + 1), 2
 
-# Score the 10th frame, which awards a bonus roll after a strike or spare.
+# Score the 10th frame, which awards a bonus roll after a strike or spare
 def score_tenth_frame(rolls: list, roll_idx: int) -> int | None:
+    first = rolls[roll_idx]
+    
+    if first == '/':
+        raise ValueError("Spare cannot open the 10th frame")
+    
     if roll_idx + 1 >= len(rolls):
         return None
 
-    first, second = rolls[roll_idx], rolls[roll_idx + 1]
-    earns_bonus = first == 'X' or second == '/'
+    second = rolls[roll_idx + 1]
 
-    if earns_bonus:
-        if roll_idx + 2 >= len(rolls):
-            return None
-        return pin_value(rolls, roll_idx) + pin_value(rolls, roll_idx + 1) + pin_value(rolls, roll_idx + 2)
+    if first != 'X' and second == 'X':
+        raise ValueError("Strike in second roll must follow a strike in the 10th frame")
+    if first == 'X' and second == '/':
+        raise ValueError("Spare notation invalid when pins were reset by a first-ball strike")
+    if first != 'X' and second != '/' and int(first) + int(second) > 10:
+        raise ValueError("Open frame total exceeds available pins")
 
-    return pin_value(rolls, roll_idx) + pin_value(rolls, roll_idx + 1)
+    earns_bonus = (first == 'X' or second == '/')
+    if not earns_bonus:
+        if roll_idx + 2 < len(rolls):
+            raise ValueError("Extra rolls after a complete 10th frame with no bonus")
+        return pin_value(rolls, roll_idx) + pin_value(rolls, roll_idx + 1)
 
-# rolls: Roll values as int (0-9), 'X' (strike), or '/' (spare).
+    if roll_idx + 2 >= len(rolls):
+        return None  # bonus ball not yet thrown
+
+    third = rolls[roll_idx + 2]
+    shared_rack = (first == 'X' and second not in ('X', '/'))
+    if third == '/' and not shared_rack:
+        raise ValueError("Spare requires pins remaining from the same rack")
+    if third == 'X' and shared_rack:
+        raise ValueError("Cannot strike with a partially depleted rack")
+    if shared_rack and third != '/' and int(second) + int(third) > 10:
+        raise ValueError("Third ball total exceeds 10 pins")
+    if roll_idx + 3 < len(rolls):
+        raise ValueError("More than 3 rolls after a complete 10th frame with bonus")
+
+    return pin_value(rolls, roll_idx) + pin_value(rolls, roll_idx + 1) + pin_value(rolls, roll_idx + 2)
+
+
+def is_invalid_value_in_rolls(rolls: list) -> bool:
+    valid_values = set(range(10)) | {'X', '/'}
+    if any(r not in valid_values for r in rolls):
+        return True
+    return False
+
+# rolls: Roll values as int (0-9), 'X' (strike), or '/' (spare)
 def calculate_frame_scores(rolls: list) -> list[int | None]:
+    if is_invalid_value_in_rolls(rolls):
+        raise ValueError(f"Invalid roll value: {rolls}")
+
     results = []
     roll_idx = 0
 
@@ -63,67 +102,15 @@ def calculate_frame_scores(rolls: list) -> list[int | None]:
 
     return results
 
-# Validate the rolls array to ensure it is a valid bowling game (possibly in progress).
-def validate_rolls(rolls: list) -> bool:
-    valid_values = set(range(10)) | {'X', '/'}
-    if any(r not in valid_values for r in rolls):
-        raise ValueError(f"Invalid roll value")
-
-    roll_idx = 0
-
-    for frame in range(10):
-        if roll_idx >= len(rolls):
-            return True  # game still in progress
-
-        first = rolls[roll_idx]
-        if first == '/':
-            raise ValueError("Spare cannot open a frame")
-
-        if first == 'X':
-            if frame < 9:
-                roll_idx += 1
-                continue
-            # 10th frame strike: check second ball under reset-rack rules
-            if roll_idx + 1 >= len(rolls):
-                return True
-            second = rolls[roll_idx + 1]
-            if second == '/':
-                raise ValueError("Spare notation invalid when pins were reset by a first-ball strike")
-        else:
-            # Non-strike: validate the second ball (shared rules for all frames)
-            if roll_idx + 1 >= len(rolls):
-                return True  # mid-frame, game still in progress
-            second = rolls[roll_idx + 1]
-            if second == 'X':
-                raise ValueError("Strike cannot be the second ball of a frame")
-            if second != '/' and int(first) + int(second) > 10:
-                raise ValueError("Open frame total exceeds available pins")
-            if frame < 9:
-                roll_idx += 2
-                continue
-
-        # Only the 10th frame reaches here
-        earns_bonus = (first == 'X' or second == '/')
-        if not earns_bonus:
-            if roll_idx + 2 < len(rolls):
-                raise ValueError("Extra rolls after a complete open 10th frame")
-            return True
-        if roll_idx + 2 >= len(rolls):
-            return True  # bonus ball not yet thrown
-        third = rolls[roll_idx + 2]
-        shared_rack = (first == 'X' and second not in ('X', '/'))
-        if third == '/' and not shared_rack:
-            raise ValueError("Spare requires pins remaining from the same rack")
-        if third == 'X' and shared_rack:
-            raise ValueError("Cannot strike with a partially depleted rack")
-        if shared_rack and third != '/' and int(second) + int(third) > 10:
-            raise ValueError("Third ball exceeds remaining pins")
-        if roll_idx + 3 < len(rolls):
-            raise ValueError("Game is complete, no further rolls allowed")
-
-    return True
 
 if __name__ == "__main__":
+    def assert_invalid(rolls, msg):
+        try:
+            calculate_frame_scores(rolls)
+            raise AssertionError(f"Expected ValueError for: {msg}")
+        except ValueError:
+            pass
+
     # --- Problem statement examples ---
     assert calculate_frame_scores([4, 5, "X", 8])    == [9, None, None], "strike missing both lookaheads"
     assert calculate_frame_scores([4, 5, "X", 8, 1]) == [9, 19, 9],     "strike with complete lookahead"
@@ -169,28 +156,7 @@ if __name__ == "__main__":
     assert calculate_frame_scores(base + [3, 5])          == [9]*9 + [8],    "10th open frame"
     assert calculate_frame_scores(base + [3])             == [9]*9 + [None], "10th frame, only one roll"
 
-    def assert_invalid(rolls, msg):
-        try:
-            validate_rolls(rolls)
-            raise AssertionError(f"Expected ValueError for: {msg}")
-        except ValueError:
-            pass
-
-    # --- validate_rolls: valid inputs ---
-    assert validate_rolls([]) == True,                              "empty list"
-    assert validate_rolls(["X"]) == True,                          "single strike"
-    assert validate_rolls([5, "/"]) == True,                       "spare in progress"
-    assert validate_rolls([4, 5, "X", 8, 1]) == True,             "mixed frames"
-    assert validate_rolls(["X"] * 12) == True,                     "perfect game"
-    assert validate_rolls([0] * 20) == True,                       "gutter game"
-    assert validate_rolls(base + ["X", 5, 3]) == True,             "10th strike with bonuses"
-    assert validate_rolls(base + ["X", 7, "/"]) == True,           "10th strike then spare"
-    assert validate_rolls(base + [5, "/", "X"]) == True,           "10th spare, bonus strike"
-    assert validate_rolls(base + [3, 5]) == True,                  "open 10th frame"
-
-    # --- validate_rolls: invalid inputs ---
-    assert_invalid([11],                          "invalid roll value")
-    assert_invalid(["Y"],                         "invalid roll value")
+    # --- invalid inputs (now caught by scoring functions) ---
     assert_invalid(["/", 5],                      "spare opens a frame")
     assert_invalid([5, "X"],                      "strike as second ball")
     assert_invalid([5, 6],                        "open frame exceeds 10 pins")
@@ -202,5 +168,7 @@ if __name__ == "__main__":
     assert_invalid(base + ["X", 7, 4],            "third ball exceeds remaining pins")
     assert_invalid(base + [3, 5, 7],              "extra ball after open 10th")
     assert_invalid(base + ["X", 5, 3, 1],         "extra ball after complete 10th")
+    assert_invalid([11],                          "invalid roll value: 11")
+    assert_invalid(["Y"],                         "invalid roll value: Y")
 
     print("All tests passed.")
