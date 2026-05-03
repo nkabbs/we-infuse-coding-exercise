@@ -41,5 +41,7 @@ roll was present if it should be absent or vice versa.
 
 I decided to include the validation checks directly in the functions themselves rather than as a separate 
 function, partially so it wouldn't require multiple passes through the data, but also in case those functions
-ended up getting used by other code that wasn't aware of the separate validation checks.
+ended up getting used by other code that wasn't aware of the separate validation checks. I also decided to throw 
+an exception instead of just logging the discrepancy, because if the inputs for a game score are invalid, that 
+indicates that something is seriously broken with Alice's pin module and it needs to be addressed immediately.
 
